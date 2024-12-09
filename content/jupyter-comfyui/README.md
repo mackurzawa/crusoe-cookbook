@@ -1,10 +1,10 @@
 # Getting Started with Jupyter Notebook and ComfyUI on Crusoe Cloud
 
-This guide walks you through setting up a Crusoe Cloud Virtual Machine (VM) with Jupyter Notebook and ComfyUI, a powerful node-based tool for Stable Diffusion workflows. By the end of this tutorial, you'll have a working environment ready for building and experimenting with ComfyUI workflows interactively.
+This guide walks you through setting up a Crusoe Cloud Virtual Machine (VM) with Jupyter Notebook and ComfyUI, a powerful node-based tool for image and video generation workflows. By the end of this tutorial, you'll have a working environment ready for building and experimenting with ComfyUI workflows interactively.
 
 ## What is Crusoe Cloud?
 
-[Crusoe Cloud](https://crusoecloud.com/) provides cloud instances powered by efficient GPU resources, suitable for AI/ML workloads. This guide uses Crusoe Cloud to quickly spin up an environment for machine learning experimentation.
+[Crusoe Cloud](https://crusoecloud.com/) provides cloud instances outfitted with GPUs, suitable for AI/ML workloads. This guide uses Crusoe Cloud to quickly spin up an environment for machine learning experimentation.
 
 ## What is ComfyUI?
 
