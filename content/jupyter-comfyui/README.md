@@ -4,7 +4,7 @@ This guide walks you through setting up a Crusoe Cloud Virtual Machine (VM) with
 
 ## What is Crusoe Cloud?
 
-[Crusoe Cloud](https://crusoecloud.com/) provides cloud instances outfitted with GPUs, suitable for AI/ML workloads. This guide uses Crusoe Cloud to quickly spin up an environment for machine learning experimentation.
+[Crusoe Cloud](https://crusoe.ai/) provides cloud instances outfitted with GPUs, suitable for AI/ML workloads. This guide uses Crusoe Cloud to quickly spin up an environment for machine learning experimentation.
 
 ## What is ComfyUI?
 
@@ -87,6 +87,11 @@ uv init
 This creates a Python virtual environment that `uv` manages for you.
 
 ## Setting Up Jupyter Notebook
+First, install jupyter with:
+
+```bash
+uv add jupyter
+```
 
 ### Secure Jupyter Notebook
 
@@ -98,32 +103,6 @@ This creates a Python virtual environment that `uv` manages for you.
    ```
 
    Follow the prompts to set a secure password.
-
-2. **Generate a Configuration File:**
-
-   ```bash
-   uv run jupyter notebook --generate-config
-   ```
-
-3. **Edit the Configuration:**
-
-   Use a text editor:
-
-   ```bash
-   nano /home/ubuntu/.jupyter/jupyter_notebook_config.py
-   ```
-
-   Add or modify the following lines:
-
-   ```python
-   c.NotebookApp.ip = '0.0.0.0'          # Listen on all interfaces
-   c.NotebookApp.open_browser = False     # Don't open browser automatically
-   c.NotebookApp.port = 8888             # Default port (adjust as needed)
-   c.NotebookApp.allow_root = False
-   c.NotebookApp.allow_origin = '*'      # Use cautiously in non-production environments
-   ```
-
-**Security Note:** For production, consider using more restrictive settings, like limiting origins or using an SSH tunnel exclusively.
 
 ### Start the Jupyter Notebook Server
 
