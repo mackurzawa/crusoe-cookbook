@@ -4,7 +4,7 @@ This cookbook outlines the process of setting up an observability stack in your 
 
 ## Resource provisioning
 
-The simplest way to provision a cluster on Crusoe is to use our [RKE2 Terraform](https://github.com/crusoecloud/crusoe-ml-rke2).
+The simplest way to provision a cluster on Crusoe is to use our [RKE2 Terraform](https://github.com/crusoecloud/crusoe-ml-rke2). Complete the steps described in that repository and make sure you have access to the cluster with `kubectl`.
 
 ## Installing Prometheus Operator
 The prometheus Operator simplifies the deployment and management of Prometheus instances in Kubernetes.
@@ -16,9 +16,28 @@ $ helm repo add prometheus-community https://prometheus-community.github.io/helm
 $ helm repo update
 ```
 #### 2. Install Prometheus Operator
+
+Create a file called `prometheus-values.yaml` with contents:
+```yaml
+additionalScrapeConfigs:
+- job_name: gpu-metrics
+  scrape_interval: 1s
+  metrics_path: /metrics
+  scheme: http
+  kubernetes_sd_configs:
+  - role: endpoints
+    namespaces:
+    names:
+    - gpu-operator
+  relabel_configs:
+  - source_labels: [__meta_kubernetes_pod_node_name]
+    action: replace
+    target_label: kubernetes_node
+```
+
 ```bash
 $ helm install prometheus-operator prometheus-community/kube-prometheus-stack \
-    --namespace monitoring --create-namespace
+    --namespace monitoring -f prometheus-values.yaml --create-namespace
 ```
 #### 3. Verify the installation
 ```bash
@@ -27,55 +46,20 @@ $ kubectl --namespace monitoring get pods \
 ```
 Ensure all pods are working and in healthy state.
 
-## Installing and configuring the NVidia GPU Operator
+## Installing and configuring the NVidia GPU Operator with DCGM exporter
 ### Steps
 #### 1. Install the GPU Operator using Helm:
 ```bash
 $ helm repo add nvidia https://nvidia.github.io/gpu-operator
 $ helm repo update
-$ helm install --wait --generate-name nvidia/gpu-operator --namespace gpu-operator --create-namespace
+$ helm install --wait --generate-name nvidia/gpu-operator --set serviceMonitor.enabled=true --namespace gpu-operator --create-namespace
 ```
 This command adds the NVIDIA Helm repository, updates the repositories, and installs the GPU Operator in the `gpu-operator` namespace. The `--wait` flag ensures that Helm waits for the operator's deployment to be completed and the `--create-namespace` flag creates the namespace if it doesn't exist.
 #### 2. Verify the GPU Operator and driver Installation:
 ```bash
-$ kubectl get pods -n gpu-operator -l app=nvidia-driver-daemonset
-$ kubectl logs -n gpu-operator -l app=nvidia-driver-daemonset -c nvidia-driver-validation --tail=-1 | grep 'Installed driver version:'
+$ kubectl get pods -n gpu-operator
 ```
-The output should show the installed driver version on each node.
-
-## Installing and configuring `dcgm-exporter`
-### Steps
-#### 1. Add Helm repository
-```bash
-$ helm repo add gpu-helm-charts \
-  https://nvidia.github.io/dcgm-exporter/helm-charts
-$ helm repo update
-```
-#### 2. Install `dcgm-exporter`
-```bash
-helm install \
-    --generate-name \
-    gpu-helm-charts/dcgm-exporter
-```
-#### 3. Configure Prometheus to discover `dcgm-exporter`
-If you installed Prometheus using the kube-prometheus-stack Helm chart as described above, it should automatically discover the dcgm-exporter service using Kubernetes service discovery. You can verify this by checking the Prometheus configuration:
-```bash
-$ kubectl -n monitoring get secret prometheus-operator-prometheus -o jsonpath='{.data.prometheus\.yaml}' | base64 --decode
-```
-Look for a scrape configuration targeting the `dcgm-exporter` service. It should look something like this:
-
-```yaml
-- job_name: 'monitoring/dcgm-exporter'
-    kubernetes_sd_configs:
-    - role: endpoints
-        namespaces:
-        names:
-            - 'monitoring'
-    relabel_configs:
-    - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
-        action: keep
-        regex: dcgm-exporter;metrics
-```
+Make sure all pods are either in helthy state or have completed running.
 
 ## Installing and configuring Grafana
 Grafana is a visualization tool that can be used to create dashboards for monitoring your Kubernetes cluster and applications, including GPU metrics collected by dcgm-exporter. If you installed Prometheus using the kube-prometheus-stack Helm chart, Grafana is already installed as part of that package. We'll now cover accessing Grafana and configuring data sources.
@@ -129,7 +113,7 @@ You will be prompted to change the password after the first login.
 #### 3. Configure Prometheus as a data source
 If you installed Grafana using the `kube-prometheus-stack` Helm chart, the Prometheus data source should already be configured automatically. However, you can verify or manually add it if needed.
 
-*   Go to *Configuration* (gear icon) > *Data Sources*.
+*   Go to *Connections* > *Data Sources*.
 *   You should see a data source named `Prometheus` already configured.
 *   If not, click *Add data source*, select *Prometheus*.
 *   Enter the following details:
@@ -144,7 +128,7 @@ Grafana dashboards provide a visual representation of your cluster and applicati
 
 To import this dashboard:
 - download the JSON file
-- in Grafana, go to Create (+) > Import
+- in Grafana, go to Dashboard (+) > New > Import
 - upload the JSON file or paste the JSON content
 - select the Prometheus data source you configured earlier
 - click Import
