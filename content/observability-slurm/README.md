@@ -13,6 +13,20 @@ enable_observability = true
 - Administrative Access: Root or sudo privileges on all nodes.
 - Internet Access: Nodes must be able to download packages from the internet.
 - NVIDIA GPUs: Compute nodes with NVIDIA GPUs and drivers properly installed.
+- Operating System: Ubuntu 20.04 or newer
+- Firewall: Ability to configure firewall rules for required ports
+
+### Security Considerations
+Before proceeding with installation, please note:
+- Configure firewall rules to restrict access to the following ports:
+  - Prometheus (9090)
+  - Node Exporter (9100)
+  - DCGM Exporter (9400)
+  - Grafana (3000)
+- Use SSL/TLS certificates for secure communication
+- Use secrets management for sensitive credentials
+- Implement authentication for all services
+- Regular security updates and monitoring
 
 ### Installation steps
 
@@ -54,13 +68,13 @@ _On head node_
 Download Prometheus:
 ```bash
 $ cd /tmp
-$ wget https://github.com/prometheus/prometheus/releases/download/v3.0.1/prometheus-3.0.1.linux-amd64.tar.gz
+$ wget https://github.com/prometheus/prometheus/releases/download/v2.48.1/prometheus-2.48.1.linux-amd64.tar.gz
 ```
 
 Install Prometheus:
 ```bash
-tar xvf prometheus-3.0.1.linux-amd64.tar.gz
-sudo mv prometheus-3.0.1.linux-amd64 /opt/prometheus
+tar xvf prometheus-2.48.1.linux-amd64.tar.gz
+sudo mv prometheus-2.48.1.linux-amd64 /opt/prometheus
 ```
 
 Create symbolic links for binaries:
@@ -265,7 +279,7 @@ http_port = 3000
 
 [security]
 admin_user = admin
-admin_password = your_secure_password
+admin_password = ${GRAFANA_ADMIN_PASSWORD}
 
 [auth.anonymous]
 enabled = false
@@ -403,3 +417,277 @@ $ sudo systemctl restart grafana-server
   - Prometheus logs can be found by executing `sudo journalctl -u prometheus`
   - Node Exporter logs can be found by executing `sudo journalctl -u node_exporter`
   - Grafana logs can be found at `/var/log/grafana/`
+
+### Troubleshooting
+
+#### Common Issues and Solutions
+
+1. **Service Won't Start**
+   ```bash
+   # Check service status
+   sudo systemctl status <service-name>
+   # View logs
+   sudo journalctl -u <service-name> -f
+   ```
+
+2. **Metrics Not Showing**
+   - Verify target is up in Prometheus UI
+   - Check network connectivity
+   - Verify port accessibility: `netstat -tulpn | grep <port>`
+
+3. **GPU Metrics Missing**
+   - Verify NVIDIA drivers: `nvidia-smi`
+   - Check DCGM container logs: `docker logs dcgm-exporter`
+   - Verify DCGM endpoint: `curl localhost:9400/metrics`
+
+### Backup Procedures
+
+1. **Prometheus Data**
+   ```bash
+   sudo systemctl stop prometheus
+   sudo tar -czf prometheus_data_backup.tar.gz /var/lib/prometheus
+   sudo systemctl start prometheus
+   ```
+
+2. **Grafana**
+   ```bash
+   sudo cp /etc/grafana/grafana.ini /etc/grafana/grafana.ini.backup
+   sudo tar -czf grafana_data_backup.tar.gz /var/lib/grafana
+   ```
+
+### Upgrade Procedures
+
+Always backup data before upgrading:
+
+1. **Prometheus Upgrade**
+   ```bash
+   sudo systemctl stop prometheus
+   # Download new version
+   # Replace binaries
+   # Test configuration
+   sudo -u prometheus /usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --check
+   sudo systemctl start prometheus
+   ```
+
+2. **Node Exporter Upgrade**
+   ```bash
+   sudo systemctl stop node_exporter
+   # Download new version
+   # Replace binary
+   sudo systemctl start node_exporter
+   ```
+
+### Health Monitoring
+
+Set up alerting rules in Prometheus for:
+- Service availability
+- High resource usage
+- Error rates
+- GPU-specific metrics
+
+Example alert rules can be added to `/etc/prometheus/alerts.yml`:
+```yaml
+groups:
+- name: example
+  rules:
+  - alert: HighCPUUsage
+    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High CPU usage on {{ $labels.instance }}
+```
+
+### Network Topology
+
+For a typical SLURM cluster with observability stack, the network layout should look like this:
+
+```
+                                    ┌─────────────────┐
+                                    │                 │
+                                    │  Head Node      │
+                                    │  - Prometheus   │
+                                    │  - Grafana      │
+                                    │                 │
+                                    └────────┬────────┘
+                                            │
+                                            │
+                     ┌──────────────────────┼──────────────────────┐
+                     │                      │                      │
+             ┌───────┴───────┐      ┌───────┴───────┐      ┌───────┴───────┐
+             │ Compute Node 1 │      │ Compute Node 2 │      │ Compute Node n │
+             │ - Node Exporter│      │ - Node Exporter│      │ - Node Exporter│
+             │ - DCGM Exporter│      │ - DCGM Exporter│      │ - DCGM Exporter│
+             └───────────────┘      └───────────────┘      └───────────────┘
+```
+
+### Data Retention and Storage
+
+Configure data retention in Prometheus by adding to `/etc/prometheus/prometheus.yml`:
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # How long to retain data
+  retention_time: 15d
+  # Maximum size of storage blocks
+  storage.tsdb.max_block_duration: 4h
+```
+
+Storage requirements estimation:
+- Prometheus: ~1MB/day per time series
+- Grafana: ~100MB for dashboard configurations
+- Node Exporter: negligible local storage
+- DCGM: negligible local storage
+
+### High Availability Setup
+
+For production environments, consider setting up Prometheus in HA mode:
+
+1. **Multiple Prometheus Instances**
+   ```yaml
+   # prometheus1.yml
+   global:
+     external_labels:
+       replica: prometheus1
+   
+   # prometheus2.yml
+   global:
+     external_labels:
+       replica: prometheus2
+   ```
+
+2. **Load Balancer Configuration**
+   ```nginx
+   upstream prometheus {
+       server prometheus1:9090;
+       server prometheus2:9090 backup;
+   }
+   ```
+
+3. **Grafana HA Setup**
+   ```ini
+   [database]
+   type = postgres
+   host = postgres-server:5432
+   name = grafana
+   user = grafana
+   ```
+
+### Advanced Configuration
+
+#### Prometheus Recording Rules
+Add to `/etc/prometheus/rules/recording_rules.yml`:
+```yaml
+groups:
+  - name: cpu_rules
+    rules:
+      - record: job:node_cpu_usage:avg_rate5m
+        expr: 100 - avg by (job, instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100
+
+  - name: gpu_rules
+    rules:
+      - record: job:gpu_memory_usage:avg
+        expr: avg by (gpu) (DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL) * 100
+```
+
+#### Service Discovery
+Replace static configs with service discovery in `/etc/prometheus/prometheus.yml`:
+```yaml
+scrape_configs:
+  - job_name: 'node'
+    file_sd_configs:
+      - files:
+        - '/etc/prometheus/targets/*.yml'
+        refresh_interval: 5m
+```
+
+#### Security Hardening
+
+1. **TLS Configuration for Prometheus**
+   ```yaml
+   tls_config:
+     cert_file: /etc/prometheus/ssl/prometheus.crt
+     key_file: /etc/prometheus/ssl/prometheus.key
+     client_auth_type: RequireAndVerifyClientCert
+     ca_file: /etc/prometheus/ssl/ca.crt
+   ```
+
+2. **Authentication for Node Exporter**
+   ```yaml
+   basic_auth_config:
+     username: ${NODE_EXPORTER_USER}
+     password: ${NODE_EXPORTER_PASSWORD}
+   ```
+
+### Performance Tuning
+
+1. **Prometheus Memory Management**
+   Add to systemd service file:
+   ```ini
+   [Service]
+   Environment="GOGC=40"
+   Environment="GOMAXPROCS=4"
+   ```
+
+2. **Query Optimization**
+   - Use recording rules for frequently used queries
+   - Limit the use of regex in queries
+   - Use appropriate time ranges in dashboards
+
+### Disaster Recovery
+
+1. **Backup Strategy**
+   ```bash
+   #!/bin/bash
+   # /usr/local/bin/backup-metrics.sh
+   
+   BACKUP_DIR="/backup/metrics"
+   DATE=$(date +%Y%m%d)
+   
+   # Prometheus
+   systemctl stop prometheus
+   tar -czf $BACKUP_DIR/prometheus-$DATE.tar.gz /var/lib/prometheus
+   systemctl start prometheus
+   
+   # Grafana
+   systemctl stop grafana-server
+   tar -czf $BACKUP_DIR/grafana-$DATE.tar.gz /var/lib/grafana
+   systemctl start grafana-server
+   
+   # Configurations
+   tar -czf $BACKUP_DIR/configs-$DATE.tar.gz /etc/prometheus /etc/grafana
+   
+   # Cleanup old backups
+   find $BACKUP_DIR -type f -mtime +30 -delete
+   ```
+
+2. **Recovery Procedure**
+   ```bash
+   #!/bin/bash
+   # /usr/local/bin/restore-metrics.sh
+   
+   BACKUP_DIR="/backup/metrics"
+   DATE=$1
+   
+   systemctl stop prometheus grafana-server
+   
+   tar -xzf $BACKUP_DIR/prometheus-$DATE.tar.gz -C /
+   tar -xzf $BACKUP_DIR/grafana-$DATE.tar.gz -C /
+   tar -xzf $BACKUP_DIR/configs-$DATE.tar.gz -C /
+   
+   chown -R prometheus:prometheus /var/lib/prometheus /etc/prometheus
+   chown -R grafana:grafana /var/lib/grafana /etc/grafana
+   
+   systemctl start prometheus grafana-server
+   ```
+
+### Maintenance Schedule
+
+Recommended maintenance schedule:
+- Daily: Check alerts and service status
+- Weekly: Review storage usage and performance metrics
+- Monthly: Backup data and configurations
+- Quarterly: Review and update alert thresholds
+- Bi-annually: Version upgrades and security audits
