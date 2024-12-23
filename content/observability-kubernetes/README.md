@@ -19,6 +19,9 @@ $ helm repo update
 
 Create a file called `prometheus-values.yaml` with contents:
 ```yaml
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
 additionalScrapeConfigs:
 - job_name: gpu-metrics
   scrape_interval: 1s
@@ -30,6 +33,9 @@ additionalScrapeConfigs:
     names:
     - gpu-operator
   relabel_configs:
+  - source_labels: [__meta_kubernetes_endpoints_name]
+    action: drop
+    regex: .*-node-feature-discovery-master
   - source_labels: [__meta_kubernetes_pod_node_name]
     action: replace
     target_label: kubernetes_node
@@ -52,14 +58,20 @@ Ensure all pods are working and in healthy state.
 ```bash
 $ helm repo add nvidia https://nvidia.github.io/gpu-operator
 $ helm repo update
-$ helm install --wait --generate-name nvidia/gpu-operator --set serviceMonitor.enabled=true --namespace gpu-operator --create-namespace
+$ helm install --wait --generate-name \
+    nvidia/gpu-operator \
+    --set dcgmExporter.enabled=true \
+    --set dcgmExporter.serviceMonitor.enabled=true \
+    --set serviceMonitor.enabled=true \
+    --namespace gpu-operator \
+    --create-namespace
 ```
 This command adds the NVIDIA Helm repository, updates the repositories, and installs the GPU Operator in the `gpu-operator` namespace. The `--wait` flag ensures that Helm waits for the operator's deployment to be completed and the `--create-namespace` flag creates the namespace if it doesn't exist.
 #### 2. Verify the GPU Operator and driver Installation:
 ```bash
 $ kubectl get pods -n gpu-operator
 ```
-Make sure all pods are either in helthy state or have completed running.
+Make sure all pods are either in healthy state or have completed running.
 
 ## Installing and configuring Grafana
 Grafana is a visualization tool that can be used to create dashboards for monitoring your Kubernetes cluster and applications, including GPU metrics collected by dcgm-exporter. If you installed Prometheus using the kube-prometheus-stack Helm chart, Grafana is already installed as part of that package. We'll now cover accessing Grafana and configuring data sources.
@@ -136,66 +148,135 @@ To import this dashboard:
 
 ## Running an example ML workflow
 
-To demonstrate the observability stack in action, we'll deploy a simple machine learning workload using TensorFlow and MNIST dataset. This example will allow you to observe GPU resource utilization in Grafana. This assumes you have the `nvidia-device-plugin` running, which is typically installed as part of the GPU Operator.
+To demonstrate the observability stack in action, we'll deploy a simple machine learning workload using PyTorch and MNIST. This example will allow you to observe GPU resource utilization in Grafana.
 
 ### Steps
 
-1. **Deploy the TensorFlow MNIST example:**
+1. **Deploy the PyTorch MNIST example:**
 
-Use the following YAML configuration to deploy a TensorFlow training job:
+   Use the following YAML configuration to deploy a PyTorch training job:
 
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: tensorflow-mnist
-spec:
-  containers:
-  - name: tensorflow-mnist
-    image: tensorflow/tensorflow:latest-gpu  # Use a TensorFlow image with GPU support
-    resources:
-      limits:
-        nvidia.com/gpu: 1 # Request one GPU
-    command: ["python", "/tensorflow/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py"]
-```
+   ```yaml
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: pytorch-mnist
+   spec:
+     containers:
+     - name: pytorch-mnist
+       image: pytorch/pytorch:latest  # Use a PyTorch image with GPU support
+       resources:
+         limits:
+           nvidia.com/gpu: 1  # Request one GPU
+       command: ["python", "-c"]
+       args:
+         - >
+           import torch;
+           import torchvision;
+           import torchvision.transforms as transforms;
+           import torch.nn as nn;
+           import torch.optim as optim;
 
-Save this configuration as `tensorflow-mnist.yaml` and apply it to your cluster:
+           # Simple CNN for MNIST
+           class Net(nn.Module):
+               def __init__(self):
+                   super(Net, self).__init__()
+                   self.conv1 = nn.Conv2d(1, 32, 3, 1)
+                   self.conv2 = nn.Conv2d(32, 64, 3, 1)
+                   self.fc1 = nn.Linear(9216, 128)
+                   self.fc2 = nn.Linear(128, 10)
 
-```bash
-kubectl apply -f tensorflow-mnist.yaml
-```
+               def forward(self, x):
+                   x = torch.relu(self.conv1(x))
+                   x = torch.relu(self.conv2(x))
+                   x = torch.flatten(x, 1)
+                   x = torch.relu(self.fc1(x))
+                   x = self.fc2(x)
+                   return x
+
+           device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+           transform = transforms.Compose([transforms.ToTensor(),
+                                           transforms.Normalize((0.1307,), (0.3081,))])
+
+           train_dataset = torchvision.datasets.MNIST(root='/tmp/mnist', train=True,
+                                                      download=True, transform=transform)
+           train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+           model = Net().to(device)
+           optimizer = optim.Adam(model.parameters(), lr=1e-3)
+           criterion = nn.CrossEntropyLoss()
+
+           # Train for a single epoch for demonstration
+           model.train()
+           for batch_idx, (data, target) in enumerate(train_loader):
+               data, target = data.to(device), target.to(device)
+               optimizer.zero_grad()
+               output = model(data)
+               loss = criterion(output, target)
+               loss.backward()
+               optimizer.step()
+               if batch_idx % 100 == 0:
+                   print(f"Training batch {batch_idx}, Loss: {loss.item()}")
+           print("Training complete.")
+         # End of Python script
+   ```
+
+   Save this configuration as `pytorch-mnist.yaml` and apply it to your cluster:
+
+   ```bash
+   kubectl apply -f pytorch-mnist.yaml
+   ```
 
 2. **Observe GPU metrics in Grafana:**
 
-*   Open your Grafana dashboard (e.g., `http://localhost:3000` if using port-forwarding).
-*   Navigate to the NVIDIA DCGM Exporter dashboard you imported earlier.
-*   You should now see GPU metrics being populated, reflecting the resource utilization of the TensorFlow training job. You should see increases in GPU utilization, memory usage, and potentially temperature.
+   - Open your Grafana dashboard (e.g., http://localhost:3000 if using port-forwarding).
+   - Navigate to the NVIDIA DCGM Exporter dashboard (or other dashboards) you imported earlier.
+   - You should now see GPU metrics being populated, reflecting the resource utilization of the PyTorch training job. Monitor GPU utilization, memory usage, temperature, etc.
 
-1. **(Optional) Scale the workload:**
+3. **(Optional) Stress test the GPUs:**
 
-To see a more significant impact on GPU metrics, you can scale the TensorFlow deployment. This will launch multiple pods, each consuming GPU resources.
+   For a more intensive test, you can run GPU benchmark tools within the container. An example command could be:
 
-```bash
-kubectl scale pod tensorflow-mnist --replicas=2
-```
+   ```bash
+   nvidia-smi -lms 100  # Loop nvidia-smi every 100 milliseconds
+   ```
 
-Observe the changes in your Grafana dashboards as the workload scales.
+   Adjust resource requests and limits as desired to push the GPUs further.
 
-4. **(Optional) Stress test the GPUs:**
+4. **Clean up:**
 
-For a more intensive test, consider using a dedicated GPU benchmark tool like `nvidia-smi` inside your pod. This allows you to push the GPUs to their limits and observe the corresponding metrics in Grafana. An example command within the container could be:
+   After you're finished observing the metrics, delete the PyTorch Pod to release the GPU resources:
 
-```bash
-nvidia-smi -lms 100  # Loop nvidia-smi every 100 milliseconds
-```
+   ```bash
+   kubectl delete pod pytorch-mnist
+   ```
 
-Remember to adjust the resource requests and limits in your pod definition to match the desired load.
+This example demonstrates how to deploy a simple ML workload with PyTorch and monitor its GPU usage in Grafana. You can adapt this approach to suit your own ML pipelines and continuously gain insights into their resource consumption and performance.
 
-5. **Clean up:**
-After you're finished observing the metrics, delete the TensorFlow pod to release the GPU resources:
+## Security Considerations
 
-```bash
-kubectl delete pod tensorflow-mnist
-```
+Here are some high-level security considerations when running and monitoring a Kubernetes cluster:
 
-This example demonstrates how to deploy a simple ML workload and monitor its GPU usage using the observability stack. You can adapt this approach to monitor more complex ML applications and gain insights into their resource consumption and performance. Remember to tailor the resource requests and limits in your pod definitions to match the specific requirements of your workloads.
+- Role-Based Access Control (RBAC)  
+  Ensure RBAC is properly configured so that users and service accounts only have the permissions they need. Limit cluster administrator privileges to only trusted users.
+  
+- Network Policies  
+  Leverage Kubernetes Network Policies to control inbound and outbound traffic for both application pods and monitoring components. This helps limit the blast radius if a component is compromised.
+
+- Secure Storage and Transmission  
+  • Encrypt sensitive data at rest (etcd data, persistent volumes).  
+  • Use TLS/SSL to secure in-flight communication between components (e.g., ingress traffic, Grafana, Prometheus, and other external connections).
+
+- Least Privilege for Observability Tools  
+  Ensure that observability tools (Prometheus, Grafana, exporters) only have the required permissions and do not expose credentials or other sensitive data unnecessarily.
+
+- Regular Updates and Patching  
+  Keep your Kubernetes cluster, observability components (Helm charts, container images), and underlying OS patched and up-to-date to mitigate known vulnerabilities.
+
+- Secrets Management  
+  Use Kubernetes secrets for storing sensitive information. Restrict access via RBAC to these secrets and ensure your CI/CD pipelines do not inadvertently expose credentials.
+
+- Validate Third-Party Integrations  
+  Monitor and review any third-party software, including Helm charts and container images, for potential security risks. Pin versions and maintain updated images from trusted sources.
+
+Adopting these measures helps ensure that your observability stack and Kubernetes environment remain resilient against common security threats.
