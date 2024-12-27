@@ -280,3 +280,31 @@ Here are some high-level security considerations when running and monitoring a K
   Monitor and review any third-party software, including Helm charts and container images, for potential security risks. Pin versions and maintain updated images from trusted sources.
 
 Adopting these measures helps ensure that your observability stack and Kubernetes environment remain resilient against common security threats.
+
+## Scalability and Redundancy
+
+When designing your observability stack for Kubernetes, consider setting up highly-available replicas for critical components (such as Prometheus clusters, Grafana instances, and exporters) to avoid single points of failure. Use Kubernetes deployments or stateful sets with proper anti-affinity rules to ensure workloads are distributed across multiple nodes. Leverage efficient storage backends or object storage for large-scale metric retention. You can also employ horizontal pod autoscaling for your monitoring components based on resource utilization or incoming workload, ensuring that additional pods are provisioned during peak times automatically. This approach provides a resilient and scalable observability setup that can cope with growing workloads or unexpected spikes while maintaining reliable data collection and alerting.
+
+As an example, you can configure a Horizontal Pod Autoscaler (HPA) for Prometheus to automatically adjust the number of replicas based on CPU usage:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prometheus-hpa
+  namespace: monitoring
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prometheus-operator-kube-prometheus-prometheus
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+```
