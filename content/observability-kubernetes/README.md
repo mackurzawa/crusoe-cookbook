@@ -146,112 +146,73 @@ To import this dashboard:
 - click Import
 - this dashboard provides comprehensive metrics about your GPUs, including utilization, temperature, power usage, memory usage, and more
 
-## Running an example ML workflow
+## Running a distributed ML workflow
 
-To demonstrate the observability stack in action, we'll deploy a simple machine learning workload using PyTorch and MNIST. This example will allow you to observe GPU resource utilization in Grafana.
+To demonstrate the observability stack in action, we'll deploy a multi-replica (distributed) machine learning job using PyTorch's Distributed Data Parallel (DDP). This example can span multiple nodes and GPUs, allowing you to observe distributed training in Grafana.
 
 ### Steps
 
-1. **Deploy the PyTorch MNIST example:**
+1. **Deploy the Distributed PyTorch MNIST example using the PyTorchJob CRD**
 
-   Use the following YAML configuration to deploy a PyTorch training job:
+   Below is a sample YAML that uses Kubeflow's PyTorchJob custom resource to run a two-worker distributed job.
+   
+   First, install the Kubeflow training operator:
+   ```bash
+   kubectl apply --server-side -k "github.com/kubeflow/training-operator.git/manifests/overlays/standalone?ref=v1.8.1"
+   ```
+   
+   Save this as distributed-pytorch-mnist.yaml:
 
    ```yaml
-   apiVersion: v1
-   kind: Pod
+   apiVersion: kubeflow.org/v1
+   kind: PyTorchJob
    metadata:
-     name: pytorch-mnist
+     name: distributed-mnist
    spec:
-     containers:
-     - name: pytorch-mnist
-       image: pytorch/pytorch:latest  # Use a PyTorch image with GPU support
-       resources:
-         limits:
-           nvidia.com/gpu: 1  # Request one GPU
-       command: ["python", "-c"]
-       args:
-         - >
-           import torch;
-           import torchvision;
-           import torchvision.transforms as transforms;
-           import torch.nn as nn;
-           import torch.optim as optim;
-
-           # Simple CNN for MNIST
-           class Net(nn.Module):
-               def __init__(self):
-                   super(Net, self).__init__()
-                   self.conv1 = nn.Conv2d(1, 32, 3, 1)
-                   self.conv2 = nn.Conv2d(32, 64, 3, 1)
-                   self.fc1 = nn.Linear(9216, 128)
-                   self.fc2 = nn.Linear(128, 10)
-
-               def forward(self, x):
-                   x = torch.relu(self.conv1(x))
-                   x = torch.relu(self.conv2(x))
-                   x = torch.flatten(x, 1)
-                   x = torch.relu(self.fc1(x))
-                   x = self.fc2(x)
-                   return x
-
-           device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-           transform = transforms.Compose([transforms.ToTensor(),
-                                           transforms.Normalize((0.1307,), (0.3081,))])
-
-           train_dataset = torchvision.datasets.MNIST(root='/tmp/mnist', train=True,
-                                                      download=True, transform=transform)
-           train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-
-           model = Net().to(device)
-           optimizer = optim.Adam(model.parameters(), lr=1e-3)
-           criterion = nn.CrossEntropyLoss()
-
-           # Train for a single epoch for demonstration
-           model.train()
-           for batch_idx, (data, target) in enumerate(train_loader):
-               data, target = data.to(device), target.to(device)
-               optimizer.zero_grad()
-               output = model(data)
-               loss = criterion(output, target)
-               loss.backward()
-               optimizer.step()
-               if batch_idx % 100 == 0:
-                   print(f"Training batch {batch_idx}, Loss: {loss.item()}")
-           print("Training complete.")
-         # End of Python script
+     pytorchReplicaSpecs:
+       Master:
+         replicas: 1
+         restartPolicy: OnFailure
+         template:
+           spec:
+             containers:
+             - name: pytorch
+               image: quay.io/kubeflow/training-operator:pytorch-dist-mnist-example
+               resources:
+                 limits:
+                   nvidia.com/gpu: 1
+       Worker:
+         replicas: 2
+         restartPolicy: OnFailure
+         template:
+           spec:
+             containers:
+             - name: pytorch
+               image: quay.io/kubeflow/training-operator:pytorch-dist-mnist-example
+               resources:
+                 limits:
+                   nvidia.com/gpu: 1
    ```
 
-   Save this configuration as `pytorch-mnist.yaml` and apply it to your cluster:
-
+   Apply this resource to your cluster:
    ```bash
-   kubectl apply -f pytorch-mnist.yaml
+   kubectl apply -f distributed-pytorch-mnist.yaml
    ```
 
-2. **Observe GPU metrics in Grafana:**
+2. **Observe GPU metrics in Grafana**
 
    - Open your Grafana dashboard (e.g., http://localhost:3000 if using port-forwarding).
-   - Navigate to the NVIDIA DCGM Exporter dashboard (or other dashboards) you imported earlier.
-   - You should now see GPU metrics being populated, reflecting the resource utilization of the PyTorch training job. Monitor GPU utilization, memory usage, temperature, etc.
+   - Navigate to the NVIDIA DCGM Exporter dashboard (or a relevant GPU dashboard) you imported earlier.
+   - You should see GPU metrics from each worker in the distributed job, including utilization, memory usage, temperature, etc.
 
-3. **(Optional) Stress test the GPUs:**
+3. **Clean up**
 
-   For a more intensive test, you can run GPU benchmark tools within the container. An example command could be:
-
+   When finished, delete the distributed PyTorch job to free your resources:
    ```bash
-   nvidia-smi -lms 100  # Loop nvidia-smi every 100 milliseconds
+   kubectl delete -f distributed-pytorch-mnist.yaml
    ```
 
-   Adjust resource requests and limits as desired to push the GPUs further.
-
-4. **Clean up:**
-
-   After you're finished observing the metrics, delete the PyTorch Pod to release the GPU resources:
-
-   ```bash
-   kubectl delete pod pytorch-mnist
-   ```
-
-This example demonstrates how to deploy a simple ML workload with PyTorch and monitor its GPU usage in Grafana. You can adapt this approach to suit your own ML pipelines and continuously gain insights into their resource consumption and performance.
+This example demonstrates how to deploy a distributed ML workload with PyTorch and monitor its GPU usage in Grafana. You can adapt this approach to suit your own ML pipelines and continuously gain insights into their resource consumption and performance.
 
 ## Security Considerations
 
