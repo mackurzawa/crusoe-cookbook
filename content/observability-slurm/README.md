@@ -22,7 +22,7 @@ Before proceeding with installation, please note:
   - Prometheus (9090)
   - Node Exporter (9100)
   - DCGM Exporter (9400)
-  - Grafana (3000)
+  - Grafana (3000 - only on the head node)
 - Use SSL/TLS certificates for secure communication
 - Use secrets management for sensitive credentials
 - Implement authentication for all services
