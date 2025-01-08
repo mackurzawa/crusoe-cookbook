@@ -152,51 +152,28 @@ To demonstrate the observability stack in action, we'll deploy a multi-replica (
 
 ### Steps
 
-1. **Deploy the Distributed PyTorch MNIST example using the PyTorchJob CRD**
-
-   Below is a sample YAML that uses Kubeflow's PyTorchJob custom resource to run a two-worker distributed job.
+1. **Deploy the GPU example**
    
-   First, install the Kubeflow training operator:
-   ```bash
-   kubectl apply --server-side -k "github.com/kubeflow/training-operator.git/manifests/overlays/standalone?ref=v1.8.1"
-   ```
-   
-   Save this as distributed-pytorch-mnist.yaml:
+   Save this as gpu-example.yaml:
 
    ```yaml
-   apiVersion: kubeflow.org/v1
-   kind: PyTorchJob
-   metadata:
-     name: distributed-mnist
-   spec:
-     pytorchReplicaSpecs:
-       Master:
-         replicas: 1
-         restartPolicy: OnFailure
-         template:
-           spec:
-             containers:
-             - name: pytorch
-               image: quay.io/kubeflow/training-operator:pytorch-dist-mnist-example
-               resources:
-                 limits:
-                   nvidia.com/gpu: 1
-       Worker:
-         replicas: 2
-         restartPolicy: OnFailure
-         template:
-           spec:
-             containers:
-             - name: pytorch
-               image: quay.io/kubeflow/training-operator:pytorch-dist-mnist-example
-               resources:
-                 limits:
-                   nvidia.com/gpu: 1
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: gpu-operator-test
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: cuda-vector-add
+          image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubuntu20.04"
+          resources:
+            limits:
+              nvidia.com/gpu: 1
    ```
 
    Apply this resource to your cluster:
    ```bash
-   kubectl apply -f distributed-pytorch-mnist.yaml
+   kubectl apply -f gpu-example.yaml
    ```
 
 2. **Observe GPU metrics in Grafana**
