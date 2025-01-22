@@ -129,7 +129,11 @@ If you installed Grafana using the `kube-prometheus-stack` Helm chart, the Prome
 *   You should see a data source named `Prometheus` already configured.
 *   If not, click *Add data source*, select *Prometheus*.
 *   Enter the following details:
-    *   **URL:**  `http://prometheus-operator-prometheus.monitoring.svc.cluster.local:9090`
+    *   **URL:**  `http://<service-name>.monitoring.svc.cluster.local:9090`
+        *   Check the service name by running the following command:
+        ```bash
+        $ kubectl -n monitoring get svc
+        ```
     *   **Name:** `Prometheus` (or any other name you prefer)
 *   Click *Save & Test*. You should see a success message if the data source is configured correctly.
 
