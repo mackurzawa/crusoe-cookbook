@@ -2,15 +2,15 @@
 
 This guide introduces you to using Weights & Biases (W&B) for tracking machine learning experiments, specifically focusing on fine-tuning a Large Language Model (LLM) with the `transformers` library.
 
-If your `transformers` pipeline is already set up, feel free to skip ahead to the "Weights & Biases Configuration" section.
+If your `transformers` pipeline is already set up, feel free to skip ahead to the [Weights & Biases Configuration](#weights--biases-configuration) section.
 
-## Initial setup
+## Initial Setup
 
-### Create an account
+### Create an Account
 
-Ensure you have a Weights & Biases account. You can sign up at the [Weight&Biases website](https://wandb.ai/login).
+Ensure you have a Weights & Biases account. You can sign up at the [Weights & Biases website](https://wandb.ai/login).
 
-### Prerequisities
+### Prerequisites
 
 To begin, update your system and install the Python development headers:
 
@@ -25,7 +25,7 @@ Next, install the necessary Python libraries. If you've just created your enviro
 pip install bitsandbytes==0.45.4 datasets==3.5.0 peft==0.15.1 transformers==4.50.2 trl==0.16.0 wandb==0.19.8
 ```
 
-## Importing modules
+## Importing Modules
 
 For better organization, begin by importing all required modules:
 
@@ -103,8 +103,7 @@ train_dataset = train_dataset.take(200)
 test_dataset = test_dataset.take(50)
 ```
 
-
-### Tokenizer setup
+### Tokenizer Setup
 Initialize the tokenizer:
 
 ```python
@@ -122,7 +121,7 @@ WANDB_API_KEY=
 WANDB_LOG_MODEL=checkpoint
 ```
 
-### Logging in
+### Logging In
 
 Log in to W&B:
 
@@ -215,7 +214,6 @@ You can still see only one run by clicking the run name in the project dashboard
 For detailed information about all of the runs, expand the Runs panel (shortcut: Ctrl+J):
 
 ![table with all logged information](./images/few-experiments-table.png)
-
 
 ## Logging Custom Metrics
 
