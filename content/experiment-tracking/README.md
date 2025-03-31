@@ -12,7 +12,14 @@ Ensure you have a Weights & Biases account. You can sign up at the [Weight&Biase
 
 ### Prerequisities
 
-To get started, install the necessary libraries. If you've just created your environment, use the following command:
+To begin, update your system and install the Python development headers:
+
+```bash
+sudo apt-get update
+sudo apt-get install python3-dev -y
+```
+
+Next, install the necessary Python libraries. If you've just created your environment, use the following command:
 
 ```bash
 pip install bitsandbytes==0.45.4 datasets==3.5.0 peft==0.15.1 transformers==4.50.2 trl==0.16.0 wandb==0.19.8
@@ -29,7 +36,7 @@ import wandb
 
 from datasets import load_dataset, Dataset
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, EarlyStoppingCallback
 from transformers.integrations import WandbCallback
 from trl import SFTConfig, SFTTrainer
 ```
@@ -108,12 +115,13 @@ tokenizer = AutoTokenizer.from_pretrained(repo_id)
 
 ### Environment Variables
 
-Set the required environment variables to access W&B and save model artifacts:
+Set the necessary environment variables to access Weights & Biases and save model artifacts. Follow the instructions [here](https://docs.wandb.ai/support/find_api_key/) to find your API key. For a complete list of environment variables, refer to the [documentation](https://docs.wandb.ai/guides/track/environment-variables/):
 
 ```bash
 WANDB_API_KEY=
 WANDB_LOG_MODEL=checkpoint
 ```
+
 ### Logging in
 
 Log in to W&B:
@@ -132,20 +140,24 @@ Set up your training parameters using `SFTConfig` and configure logging to W&B. 
 args = SFTConfig(
     num_train_epochs=10,
     per_device_train_batch_size=16,
-    learning_rate=3e-3,
+    learning_rate=1e-3,
     optim='adagrad',
+
     gradient_checkpointing=True,
     gradient_checkpointing_kwargs={'use_reentrant': False}, 
     gradient_accumulation_steps=1,  
-    lr_scheduler_type='constant'
+
+    lr_scheduler_type='constant',
     packing=True,
     metric_for_best_model="eval_loss",
-    output_dir="experiment_1",
+    output_dir="Fine-tuning-Phi-3-mini-4k-instruct-xsum-v1",
+
     logging_strategy="steps",
     logging_steps=1,
     eval_strategy="steps",
     eval_steps=1, 
-    report_to="wandb",
+
+    report_to="wandb"  # Ensure this is set
 )
 ```
 
@@ -155,8 +167,8 @@ Initialize your W&B run:
 
 ```python
 wandb.init(
-    project="Fine-tuning LLMs",
-    name="Phi-3-mini-4k-instruct-xsum-v1",
+    project="Summarization-of-articles",
+    name="Fine-tuning-Phi-3-mini-4k-instruct-xsum-v1",
     tags=["baseline", "Phi-3", "xsum"],
 )
 ```
@@ -188,33 +200,6 @@ Remember to finish your W&B run if you're using a notebook:
 wandb.finish()
 ```
 
-## Logging Custom Metrics
-
-To log custom metrics, subclass `WandbCallback` and use methods like `on_train_end` to log metrics with `wandb.log()`. You can check out all of the methods in the [Huggingface docs](https://huggingface.co/docs/transformers/v4.50.0/en/main_classes/callback#transformers.TrainerCallback).
-
-```python
-class WandbCustomMetricCallback(WandbCallback):
-    def on_train_end(self, args, state, control, **kwargs):
-        super().on_train_end(args, state, control, **kwargs)
-
-        ...  # calculate metric
-
-        wandb.log({"metric_name": metric_value})
-```
-
-Organize metrics into categories by prefixing names:
-
-```python
-wandb.log({"train/metric": metric_value})
-wandb.log({"eval/metric": metric_value})
-```
-
-You can also create new categories:
-
-```python
-wandb.log({"new_category/metric": metric_value})
-```
-
 ## Visualizing Results
 
 After training, check your run on the W&B dashboard under your project:
@@ -230,6 +215,40 @@ You can still see only one run by clicking the run name in the project dashboard
 For detailed information about all of the runs, expand the Runs panel (shortcut: Ctrl+J):
 
 ![table with all logged information](./images/few-experiments-table.png)
+
+
+## Logging Custom Metrics
+
+By default, Weights & Biases automatically logs a variety of metrics related to training, evaluation, and system performance. These include metrics like mean token accuracy, training and test losses, GPU power usage, and GPU temperature, among others. However, you can also log your own metrics. To do this, subclass `WandbCallback` and use methods like `on_train_end` to log metrics with `wandb.log()`. You can check out all of the methods in the [Huggingface docs](https://huggingface.co/docs/transformers/v4.50.0/en/main_classes/callback#transformers.TrainerCallback).
+
+```python
+# trainer = SFTTrainer( ... )
+
+class WandbCustomMetricCallback(WandbCallback):
+    def on_train_end(self, args, state, control, **kwargs):
+        super().on_train_end(args, state, control, **kwargs)
+
+        ...  # calculate metric
+
+        wandb.log({"metric_name": metric_value})
+
+trainer.add_callback(WandbCustomMetricCallback())
+
+# trainer.train()
+```
+
+Organize metrics into categories by prefixing names:
+
+```python
+wandb.log({"train/metric": metric_value})
+wandb.log({"eval/metric": metric_value})
+```
+
+You can also create new categories:
+
+```python
+wandb.log({"new_category/metric": metric_value})
+```
 
 ## Downloading and Using a Model Artifact
 
@@ -247,3 +266,7 @@ model = AutoModelForCausalLM.from_pretrained(
     quantization_config=bnb_config
 )
 ```
+
+# Conclusion
+
+In this guide, we explored the fundamentals of using Weights & Biases for experiment tracking. For more in-depth information and additional features, be sure to visit the [Weights & Biases documentation](https://docs.wandb.ai/quickstart/).
