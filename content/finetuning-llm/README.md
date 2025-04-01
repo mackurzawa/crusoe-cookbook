@@ -65,7 +65,7 @@ Set up the virtual environment and install the required dependencies:
 
 ```bash
 uv init
-uv add -q torch==2.0.1 transformers==4.32.1 datasets==2.14.4 peft==0.5.0 bitsandbytes==0.41.1 trl==0.7.1 wandb
+uv add -q torch==2.0.1 transformers==4.32.1 datasets==2.14.4 peft==0.5.0 bitsandbytes==0.41.1 trl==0.7.1
 ```
 
 ### Exporting Environment Variables
@@ -84,7 +84,7 @@ The `HF_HOME` variable points to the mounted storage where models and datasets w
 
 ### Running the Training Script
 
-The entire training process, including model initialization, dataset preparation, and training, is contained in the `main.py` script. To run the training, execute the following command:
+The training process is contained in the `main.py` script. Run it with:
 
 ```bash
 accelerate launch --mixed_precision 'bf16' main.py
@@ -125,7 +125,6 @@ tokenizer = AutoTokenizer.from_pretrained(
         padding_side="left",
         add_eos_token=True,
         add_bos_token=True,
-        token=<your_token>
     )
 tokenizer.pad_token = tokenizer.eos_token
 ```
@@ -179,7 +178,6 @@ model = AutoModelForCausalLM.from_pretrained(
     quantization_config=bnb_config,
     trust_remote_code=True,
     use_cache=False,
-    token=<your_token>,
     device_map={"": "cuda:" + str(int(os.environ.get("LOCAL_RANK") or 0))}
 )
 ```
@@ -229,7 +227,7 @@ The `TrainingArguments` class specifies all the hyperparameters and settings for
 from transformers import TrainingArguments
 
 training_args = TrainingArguments(
-    output_dir="./results"
+    output_dir="./results",
     optim="adamw_8bit",
     bf16=True,
     max_grad_norm=0.3
@@ -299,3 +297,9 @@ finetuned_model = PeftModel.from_pretrained(model, "./results")
 ```
 
 This ensures that your fine-tuned model is properly loaded with all LoRA adapters and ready for inference or further training.
+
+## Conclusion
+
+By combining **LoRA**, **4-bit quantization**, and **multi-GPU training**, we achieved efficient fine-tuning of LLMs while minimizing resource usage. This setup enables scalable, cost-effective training without sacrificing performance.
+
+Next steps? Experiment with hyperparameters and datasets to tailor models to your needs. Happy training! 🚀
